@@ -1,4 +1,4 @@
-This supplementary material illustrate the fitting of the models
+This supplementary material illustrates the fitting of the models
 discussed in *Detecting Subnational Diffusion Processes of Lethal
 Terrorism: Global Study, 2010-2016* using a subset of the data discussed
 in that article. Please note that this material should be treated as an
@@ -31,7 +31,7 @@ Python](andre.python@bdi.ox.ac.uk).
     ## fiting functions supplied with this material
     source("functions.r")
 
-Model fitting example
+View of the data
 ---------------------
 
     head(example.df)  ## data for Afghanistan and Pakistan
@@ -51,17 +51,17 @@ Model fitting example
     ## 5 2015        2 -0.3664247  1.1245760187 -0.7493187     3
     ## 6 2014        1  3.8020456 -0.4888692221  1.1150337   277
 
-    plot(sp)  ## plot Afghanistan and Pakistan boundry
+    plot(sp)  ## plot Afghanistan and Pakistan boundary
     points(example.df$longitude, example.df$latitude, pch = 20)  ## centroid points
 
 ![](diffusion_files/figure-markdown_strict/show%20data-1.png)
 
-    ## make mesh; this is an example the mesh only
+    ## make mesh
     bdry <- inla.sp2segment(sp)
-    bdry$loc <- inla.mesh.map(bdry$loc, projection = "longlat", inverse = TRUE)  ## project to unit spere representing Earth
+    bdry$loc <- inla.mesh.map(bdry$loc, projection = "longlat", inverse = TRUE)  ## project to unit sphere representing Earth
     mesh <- inla.mesh.2d(boundary = bdry, max.edge = c(4, 7)/300, 
-        cutoff = 4/300)  ## WARNING MESH FAR TOO COARSE. FOR ILLUSTRATION ONLY
-    plot(mesh, asp = 1.75)  ## aspect ratio contrls tilt of the plot
+        cutoff = 4/300)  ## WARNING:  COARSE MESH FOR ILLUSTRATION ONLY
+    plot(mesh, asp = 1.75)  ## aspect ratio controls tilt of the plot
 
 ![](diffusion_files/figure-markdown_strict/fit%20model-1.png)
 
@@ -83,7 +83,7 @@ Model fitting example
 Finding "Hotspots"
 ------------------
 
-#### Find the random fields
+#### Get posterior summaries (mean and sd) of the random fields
 
     k <- 2  ## number of years
     resol <- c(1440, 720)  ## set the resolution of the grid to detect hotspot and diffusion
@@ -95,7 +95,7 @@ Finding "Hotspots"
 
 #### Fitted values
 
-    ## Crude way to extract fitted values and upper/lower limits
+    ## Extract fitted values and upper/lower limits
     surf <- list()
     xmean <- list()
     xsd <- list()
@@ -147,12 +147,12 @@ Finding "Hotspots"
     m <- length(brk) - 1
     targetcy <- sp[(sp$iso_a3 == "AFG" | sp$iso_a3 == "PAK"), ]
 
-#### Construct diffusion process
+#### Detect diffusion process
 
-    # make diffusion processs
+    # detect hotspots
     hot <- list()
     for (j in 1:k) {
-        hot[[j]] <- ifelse(log(bdq25surf[[j]]) > logmin, 1, NA)  ## put NA everywhere except where there are hotspots (useful for next steps)
+        hot[[j]] <- ifelse(log(bdq25surf[[j]]) > logmin, 1, NA)  ## put NA everywhere except where there are hotspots
     }
     ## create vectors with projection values (x,y) and hotspot
     ## values (z)
@@ -177,7 +177,7 @@ Finding "Hotspots"
         hotspotdf[[j]] <- hotspotdf[[j]][complete.cases(hotspotdf[[j]]), 
             ]
     }
-    ## create polygon of hotspots from raster cells
+    ## create polygons of hotspots from raster cells
     hotrpoly <- list()
     for (j in 1:k) {
         hotrpoly[[j]] <- rasterToPolygons(hotr[[j]], fun = NULL, 
@@ -192,8 +192,7 @@ Finding "Hotspots"
     maxareas <- list()
     index <- list()
     for (j in 1:length(hotrpoly)) {
-        ## calculate areas of all polygons included in hotspots for
-        ## each year
+        ## calculate areas of all polygons included in hotspots for each year
         areas[[j]] <- sapply(slot(hotrpoly[[j]], "polygons"), function(x) sapply(slot(x, 
             "Polygons"), slot, "area"))
         maxareas[[j]] <- sapply(areas[[j]], max)
@@ -202,7 +201,7 @@ Finding "Hotspots"
         index[[j]] <- which(maxareas[[j]] > tau)  ## find position where area >tau
         hotrpoly[[j]] <- hotrpoly[[j]][index[[j]], ]  ## keep polygon with area>tau
     }
-    ## Create buffer
+    ## set hotspot's neighboring areas
     hotbuff <- list()
     hotadj <- list()
     diffnet <- list()  ## the final result clipped within sp (if option below not done)
@@ -211,16 +210,15 @@ Finding "Hotspots"
         hotbuff[[j]] <- gBuffer(hotbuff[[j]], byid = FALSE, id = NULL, 
             width = 0.4545455, quadsegs = 1, capStyle = "SQUARE")
         hotbuff[[j]] <- gDifference(hotbuff[[j]], hotrpoly[[j]])
-        proj4string(hotbuff[[j]]) <- CRS(proj4string(sp))  ## gives reference
+        proj4string(hotbuff[[j]]) <- CRS(proj4string(sp))  ## gives projection reference
         hotadj[[j]] <- gIntersection(hotbuff[[j]], sp)
-        hotadj[[j]] <- createSPComment(hotadj[[j]])  ## problem with holes...
+        hotadj[[j]] <- createSPComment(hotadj[[j]])  ## make it work if holes are present
         hotadj[[j]] <- disaggregate(hotadj[[j]])  ## from one to multiple polygons
-        proj4string(hotadj[[j]]) <- CRS(proj4string(sp))  ## gives reference
+        proj4string(hotadj[[j]]) <- CRS(proj4string(sp))  
         diffnet[[j]] <- hotadj[[j]]
         diffnet[[j]] <- disaggregate(diffnet[[j]])
     }
-    ## END NEIGHBOURHOOD CHOICE intersect grid with diffusion
-    ## areas
+    ## intersect grid with diffusion areas
     diffgrid <- list()
     grid <- list()
     gridpolygon <- list()
@@ -235,7 +233,7 @@ Finding "Hotspots"
         diffgrid[[j]] <- diffgrid[[j]][, !(names(diffgrid[[j]]) %in% 
             drops)]  ## remove unuseful variable
     }
-    ## diffusion
+    ## add mean and lower and higher bound of CI values on a grid
     surflowdf <- list()
     surflowr <- list()
     for (j in 1:k) {
@@ -245,7 +243,7 @@ Finding "Hotspots"
         surflowdf[[j]]$z <- bdq25surf[[j]]  ## using lower bound CI
         ## convert dataframe to raster
         surflowr[[j]] <- raster(surflowdf[[j]])
-        proj4string(surflowr[[j]]) <- CRS(proj4string(sp))  ## required 
+        proj4string(surflowr[[j]]) <- CRS(proj4string(sp))
         surflowr[[j]] <- crop(surflowr[[j]], sp)
     }
     surfhighdf <- list()
@@ -254,10 +252,10 @@ Finding "Hotspots"
         surfhighdf[[j]] <- list()
         surfhighdf[[j]]$x <- proj$x
         surfhighdf[[j]]$y <- proj$y
-        surfhighdf[[j]]$z <- bdq975surf[[j]]  ## using lower bound CI
+        surfhighdf[[j]]$z <- bdq975surf[[j]]  ## using higher bound CI
         ## convert dataframe to raster
         surfhighr[[j]] <- raster(surfhighdf[[j]])
-        proj4string(surfhighr[[j]]) <- CRS(proj4string(sp))  ## required 
+        proj4string(surfhighr[[j]]) <- CRS(proj4string(sp)) 
         surfhighr[[j]] <- crop(surfhighr[[j]], sp)
     }
     surfmeandf <- list()
@@ -266,7 +264,7 @@ Finding "Hotspots"
         surfmeandf[[j]] <- list()
         surfmeandf[[j]]$x <- proj$x
         surfmeandf[[j]]$y <- proj$y
-        surfmeandf[[j]]$z <- surf[[j]]  ## using lower bound CI 
+        surfmeandf[[j]]$z <- surf[[j]]  ## using mean
         ## convert dataframe to raster
         surfmeanr[[j]] <- raster(surfmeandf[[j]])
         proj4string(surfmeanr[[j]]) <- CRS(proj4string(sp))  ## required 
@@ -285,9 +283,14 @@ Finding "Hotspots"
     escpos <- list()
     escneg <- list()
     escdf <- list()
-    ################## OPTIONAL threshold#####################
-    thres <- 0
-    ################## OPTIONAL threshold#####################
+    ## optional: threshold to determine diffusion
+    thres <- 0 # if > 0, stricter definition of diffusion
+    ## end option
+    
+    ## three conditions for diffusion (symetric for dissipation):
+    ## mean (t+1) > mean(t)
+    ## lCI (t+1) > lCI (t)
+    ## hCI (t+1) > hCI (t) 
     for (j in 1:(k - 1)) {
         meandiff[[j]] <- unlist(extract(surfmeanr[[j + 1]], diffgrid[[j]], 
             fun = mean, na.rm = T)) - unlist(extract(surfmeanr[[j]], 
@@ -316,7 +319,9 @@ Finding "Hotspots"
     ## Crop diffusion process
     diffcrop <- list()
     for (j in 1:(k - 1)) {
-        diffcrop[[j]] <- crop(diffgrid[[j]], extent(40, 75, 25, 40))
+        diffcrop[[j]] <- crop(diffgrid[[j]], 
+        extent(bbox(sp)[1,1], bbox(sp)[1,2]), 
+        bbox(sp)[2,1], bbox(sp)[2,2])))
     }
     ## plot
     h <- 1200
@@ -329,10 +334,12 @@ Finding "Hotspots"
     colhot <- "red"  ## red (hotspot)
     coldif <- "green1"  ## light (diffusion)
     colnull <- "grey25"  ## light (diffusion)
+    par(cex=3,mar=c(4, 3, 0, 0) + 0.1,family="mono")
     plot(diffcrop[[1]], col = ifelse(diffcrop[[1]]$escpos > 0, coldif, 
         ifelse(diffcrop[[1]]$escneg > 0, coldis, colnull)), border = "NA", 
-        main = "", xlab = "", ylab = "", axes = F, xlim = c(60, 80), 
-        ylim = c(20, 40))
+        main = "", xlab = "", ylab = "", axes = F, 
+        xlim=c(bbox(sp)[1,1], bbox(sp)[1,2]),
+        ylim=c(bbox(sp)[2,1], bbox(sp)[2,2]))
     plot(hotrpoly[[1]], density = 10, angle = 45, col = colhot, border = "black", 
         add = TRUE)
     plot(sp, yaxt = "n", lwd = 3, add = TRUE, border = "grey25")
